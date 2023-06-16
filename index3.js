@@ -91,6 +91,7 @@ const XlsxPopulate = require('xlsx-populate');
         const workbook = await XlsxPopulate.fromBlankAsync();
         const sheet = workbook.sheet(0);
         let rowIndex = 1;
+        var nado = false;
         const headers = ['Ссылка',
             'Имя',
             'Телефон',
@@ -107,10 +108,8 @@ const XlsxPopulate = require('xlsx-populate');
             'Пол',
             'Возраст',
             'Компания',
-            'Образование2',
-            'Окончание',
-            'Учебное заведение',
-            'Специальность',
+            'Образования',
+
             'Иностранные языки',
             'Водительские права',
             'Командировки',
@@ -118,7 +117,10 @@ const XlsxPopulate = require('xlsx-populate');
             'Навыки и умения',
             'Обо мне',
             'Период работы',
-            'Должность'
+            'Должность',
+            'Окончание',
+            'Учебное заведение',
+            'Специальность'
         ];
 
         for (let i = 0; i < headers.length; i++) {
@@ -187,6 +189,35 @@ const XlsxPopulate = require('xlsx-populate');
                             });
                             columnValue = arrJob1[0].replace(/Пригласить|Написать|Подумать|Отклонить/g, '').trim();
                         }
+                            
+                        if (columnHeader === 'Образование') {
+								const preferHeader = arrRole[j + 1][0];
+                            if (preferHeader === 'Опыт работы') {
+                                var nado = true;
+                            }
+							
+                        
+                        }
+
+                        if (nado) {
+                            if (columnHeader === 'Образование') {
+                                eduHistory += columnValue + ', '; // Append to work history
+                            }
+                            if (columnHeader === 'Окончание') {
+                                eduHistory += columnValue + ', '; // Append to work history
+                                columnValue = "";
+                            }
+                            if (columnHeader === 'Учебное заведение') {
+                                eduHistory += columnValue + ', '; // Append to work history and add line break
+                                columnValue = "";
+                            }
+                            if (columnHeader === 'Специальность') {
+                                eduHistory += columnValue + '\n\n'; // Append to work history and add line break
+                                columnValue = "";
+
+                            }
+
+                        }
 
                         if (columnHeader === 'Период работы') {
                             workHistory += columnValue + ', '; // Append to work history
@@ -198,19 +229,21 @@ const XlsxPopulate = require('xlsx-populate');
                         }
                         if (columnHeader === 'Компания') {
                             workHistory += columnValue + '\n\n'; // Append to work history and add line break
-                            columnValue = workHistory.trim(); // Update column value
+                            columnValue = workHistory.trim(); // Update column value	
                         }
 
-
                         sheet.cell(rowIndex, columnIndex + 1).value(columnValue);
+                        workbook.sheet("Sheet1").cell(`P${i+1}`).value(removeDuplicateWords(eduHistory.trim()));
                         sheet.cell(rowIndex, columnIndex + 1).style({
                             wrapText: 'true',
                             horizontalAlignment: 'left',
                             verticalAlignment: 'top'
                         });
+
                         const column = sheet.column(columnIndex + 1);
 
-                        candidateData[columnHeader] = columnValue;
+                        //candidateData[columnHeader] = columnValue;
+
                         switch (columnHeader) {
                             case 'Имя':
                                 column.width(22);
@@ -305,18 +338,23 @@ const XlsxPopulate = require('xlsx-populate');
                     }
                 }
             }
-
+			nado=false;
             rowIndex++;
-
 
             console.log(`Данные Кандидата_${i} добавлены в файл Excel\n`);
         }
+
         var pathExcel = 'D:/Storage/JobLab';
         await workbook.find("Должность", "");
         await workbook.find("Период работы", "");
         await workbook.find("Компания", "Опыт работ");
-        await workbook.toFileAsync(`${pathExcel}/canditates.xlsx`);
-        XlsxPopulate.fromFileAsync(`${pathExcel}/canditates.xlsx`)
+        await workbook.find("Учебное заведение", "");
+        await workbook.find("Специальность", "");
+        await workbook.find("Окончание", "");
+
+
+        await workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
+        XlsxPopulate.fromFileAsync(`${pathExcel}/candidates.xlsx`)
             .then(workbook => {
                 const sheet = workbook.sheet(0);
                 const columnAddress = 'A';
@@ -324,14 +362,46 @@ const XlsxPopulate = require('xlsx-populate');
                 const column = sheet.column(columnAddress);
                 column.width(32); // Установите ширину столбца в символах
 
-                return workbook.toFileAsync(`${pathExcel}/canditates.xlsx`);
+                return workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
             })
             .then(() => {})
             .catch(err => {
                 console.error('Произошла ошибка:', err);
             });
-        console.log(`Файл Excel со всеми данными создан и сохранен по пути: ${pathExcel}/canditates.xlsx`);
+
+        await workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
+        XlsxPopulate.fromFileAsync(`${pathExcel}/candidates.xlsx`)
+            .then(workbook => {
+                const sheet = workbook.sheet(0);
+                const columnAddress = 'P';
+
+                const column = sheet.column(columnAddress);
+                column.width(142); // Set the column width in characters
+                column.style({
+                    wrapText: true
+                }); // Enable word wrap for the column
+
+                return workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
+            })
+            .then(() => {})
+            .catch(err => {
+                console.error('An error occurred:', err);
+            });
+        console.log(`Файл Excel со всеми данными создан и сохранен по пути: ${pathExcel}/candidates.xlsx`);
 
         await browser.close();
     }
 })();
+
+function removeDuplicateWords(sentence) {
+    var words = sentence.split(", ");
+    var result = [];
+
+    for (var i = 0; i < words.length; i++) {
+        if (i === 0 || words[i] !== words[i - 1]) {
+            result.push(words[i]);
+        }
+    }
+
+    return result.join(", ");
+}

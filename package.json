@@ -17,7 +17,7 @@
     "jquery": "^3.7.0",
     "path": "^0.12.7",
     "pkg": "^5.8.1",
-    "puppeteer": "^20.7.1",
+    "puppeteer": "^20.7.2",
     "xlsx": "^0.18.5",
     "xlsx-populate": "^1.21.0"
   },
