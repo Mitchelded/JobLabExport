@@ -4,10 +4,10 @@ const path = require('path')
 const XlsxPopulate = require('xlsx-populate');
 
 (async () => {
-    const cookieFilePath = path.join(__dirname, 'cookies.json'); // Path to the cookie file
-    let phpSessionId = ''; // Variable to store the PHPSESSID value
+    const cookieFilePath = path.join(__dirname, 'config.json');
+    let phpSessionId = '';
     if (fs.existsSync(cookieFilePath)) {
-        // Read the PHPSESSID value from the file
+
         const cookieData = fs.readFileSync(cookieFilePath, 'utf8');
         const {
             PHPSESSID
@@ -26,30 +26,26 @@ const XlsxPopulate = require('xlsx-populate');
         await emailInput.type('ast@5092778.ru');
         const passInput = await page.$('input[type="password"]');
         await passInput.type('8014802530');
-        // Click on the radio button with value="employer"
         await page.click('input[type="radio"][value="employer"]');
         await page.waitForNavigation({
             waitUntil: 'domcontentloaded'
         });
 
-        // Retrieve the PHPSESSID from the cookies
         const cookies = await page.cookies();
         const phpSessCookie = cookies.find((cookie) => cookie.name === 'PHPSESSID');
         if (phpSessCookie) {
             phpSessionId = phpSessCookie.value;
-            // Save the PHPSESSID value to the file
             const cookieData = JSON.stringify({
                 PHPSESSID: phpSessionId
             });
             fs.writeFileSync(cookieFilePath, cookieData);
         } else {
-            console.error('Failed to retrieve PHPSESSID from the login page.');
+            console.error('Не удалось получить PHPSESSID со страницы входа..');
             await browser.close();
             return;
         }
     }
 
-    // Set the PHPSESSID cookie
     await page.setCookie({
         name: 'PHPSESSID',
         value: phpSessionId,
@@ -86,6 +82,7 @@ const XlsxPopulate = require('xlsx-populate');
             }
         });
     } else {
+		
         console.log(`Найдено ${arrLinks.length - 1} кандидата`);
 
         const workbook = await XlsxPopulate.fromBlankAsync();
@@ -98,7 +95,7 @@ const XlsxPopulate = require('xlsx-populate');
             'E-mail',
             'Получено на вакансию',
             'Отправлена вакансия',
-            //'Должность', это заголовок Секретарь-референт, помощник руководителя, делопроизводитель, администратор
+            'Вакансия',
             'Проживание',
             'Заработная плата',
             'График работы',
@@ -109,7 +106,6 @@ const XlsxPopulate = require('xlsx-populate');
             'Возраст',
             'Компания',
             'Образования',
-
             'Иностранные языки',
             'Водительские права',
             'Командировки',
@@ -134,12 +130,22 @@ const XlsxPopulate = require('xlsx-populate');
             await page.goto(link);
             console.log(`Получаем данные Кандидата_${i}`);
             const candidateData = {};
-            candidateData['Ссылка'] = arrLinks[i]; // Add it to the candidateData object
-            sheet.cell(rowIndex, 1).value(arrLinks[i]).hyperlink(arrLinks[i]); // Set the value and add hyperlink
+            candidateData['Ссылка'] = arrLinks[i];
+            sheet.cell(rowIndex, 1).value(arrLinks[i]).hyperlink(arrLinks[i]);
             sheet.cell(rowIndex, 1).style({
                 underline: true,
                 fontColor: "0000FF"
             });
+
+            const arrJobData = await page.evaluate(() => {
+                const selectorJob = 'body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > h1';
+
+                const tbodyElement = document.querySelector(selectorJob).innerText;
+                return tbodyElement;
+            });
+
+
+
 
             const arrRole = await page.evaluate(() => {
                 const tbodyElement = document.querySelector('body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody');
@@ -147,7 +153,7 @@ const XlsxPopulate = require('xlsx-populate');
                 return Array.from(rows, (row) => Array.from(row.querySelectorAll('td'), (column) => column.innerText.trim()));
             });
 
-            let workHistory = ''; // Variable to store work history
+            let workHistory = '';
             var eduHistory = '';
             for (let j = 0; j < arrRole.length; j++) {
                 const item = arrRole[j];
@@ -158,7 +164,6 @@ const XlsxPopulate = require('xlsx-populate');
                     if (columnIndex !== -1) {
                         const cell = sheet.cell(rowIndex, columnIndex + 1);
                         if (columnHeader === 'Обязанности') {
-                            // Remove line breaks from the column value
                             columnValue = columnValue.replace('\n', '');
                         }
                         if (columnHeader === 'Отправлена вакансия') {
@@ -189,14 +194,15 @@ const XlsxPopulate = require('xlsx-populate');
                             });
                             columnValue = arrJob1[0].replace(/Пригласить|Написать|Подумать|Отклонить/g, '').trim();
                         }
-                            
+
                         if (columnHeader === 'Образование') {
-								const preferHeader = arrRole[j + 1][0];
+                            const preferHeader = arrRole[j + 1][0];
                             if (preferHeader === 'Опыт работы') {
                                 var nado = true;
                             }
-							
-                        
+
+
+
                         }
 
                         if (nado) {
@@ -219,6 +225,7 @@ const XlsxPopulate = require('xlsx-populate');
 
                         }
 
+
                         if (columnHeader === 'Период работы') {
                             workHistory += columnValue + ', '; // Append to work history
                             columnValue = "";
@@ -233,16 +240,25 @@ const XlsxPopulate = require('xlsx-populate');
                         }
 
                         sheet.cell(rowIndex, columnIndex + 1).value(columnValue);
-                        workbook.sheet("Sheet1").cell(`P${i+1}`).value(removeDuplicateWords(eduHistory.trim()));
+
+                        workbook.sheet("Sheet1").cell(`Q${i+1}`).value(removeDuplicateWords(eduHistory.trim()));
                         sheet.cell(rowIndex, columnIndex + 1).style({
                             wrapText: 'true',
                             horizontalAlignment: 'left',
                             verticalAlignment: 'top'
                         });
 
+                        workbook.sheet("Sheet1").cell(`G${i+1}`).value(removeDuplicateWords(arrJobData));
+
+                        sheet.cell(rowIndex, columnIndex + 1).style({
+                            wrapText: 'true',
+                            horizontalAlignment: 'left',
+                            verticalAlignment: 'top'
+                        });
+						
+						
                         const column = sheet.column(columnIndex + 1);
 
-                        //candidateData[columnHeader] = columnValue;
 
                         switch (columnHeader) {
                             case 'Имя':
@@ -287,18 +303,6 @@ const XlsxPopulate = require('xlsx-populate');
                             case 'Компания':
                                 column.width(99.14);
                                 break;
-                            case 'Образование2':
-                                column.width(21.14);
-                                break;
-                            case 'Окончание':
-                                column.width(100); // Надо будет изменить
-                                break;
-                            case 'Учебное заведение':
-                                column.width(85);
-                                break;
-                            case 'Специальность':
-                                column.width(84.14);
-                                break;
                             case 'Иностранные языки':
                                 column.width(42.14);
                                 break;
@@ -319,7 +323,7 @@ const XlsxPopulate = require('xlsx-populate');
                                 break;
                         }
 
-                        const headerRange = sheet.range(`A1:X${arrLinks.length}`);
+                        const headerRange = sheet.range(`A1:W${arrLinks.length}`);
                         headerRange.style({
                             border: true,
                             horizontalAlignment: 'left',
@@ -338,13 +342,13 @@ const XlsxPopulate = require('xlsx-populate');
                     }
                 }
             }
-			nado=false;
+            nado = false;
             rowIndex++;
 
             console.log(`Данные Кандидата_${i} добавлены в файл Excel\n`);
         }
 
-        var pathExcel = 'D:/Storage/JobLab';
+
         await workbook.find("Должность", "");
         await workbook.find("Период работы", "");
         await workbook.find("Компания", "Опыт работ");
@@ -352,16 +356,26 @@ const XlsxPopulate = require('xlsx-populate');
         await workbook.find("Специальность", "");
         await workbook.find("Окончание", "");
 
-
+        var pathExcel = 'D:/Storage/JobLab';
         await workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
         XlsxPopulate.fromFileAsync(`${pathExcel}/candidates.xlsx`)
             .then(workbook => {
                 const sheet = workbook.sheet(0);
                 const columnAddress = 'A';
-
+                const columnAddress1 = 'Q';
+                const columnAddress2 = 'G';
                 const column = sheet.column(columnAddress);
-                column.width(32); // Установите ширину столбца в символах
-
+                const column2 = sheet.column(columnAddress2);
+                const column1 = sheet.column(columnAddress1);
+                column2.width(87);
+                column1.width(142);
+                column.width(32);
+                column1.style({
+                    wrapText: true
+                });
+                column.style({
+                    wrapText: true
+                });
                 return workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
             })
             .then(() => {})
@@ -369,24 +383,8 @@ const XlsxPopulate = require('xlsx-populate');
                 console.error('Произошла ошибка:', err);
             });
 
-        await workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
-        XlsxPopulate.fromFileAsync(`${pathExcel}/candidates.xlsx`)
-            .then(workbook => {
-                const sheet = workbook.sheet(0);
-                const columnAddress = 'P';
+        await workbook.toFileAsync(`${pathExcel}/candidates.xlsx`)
 
-                const column = sheet.column(columnAddress);
-                column.width(142); // Set the column width in characters
-                column.style({
-                    wrapText: true
-                }); // Enable word wrap for the column
-
-                return workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
-            })
-            .then(() => {})
-            .catch(err => {
-                console.error('An error occurred:', err);
-            });
         console.log(`Файл Excel со всеми данными создан и сохранен по пути: ${pathExcel}/candidates.xlsx`);
 
         await browser.close();

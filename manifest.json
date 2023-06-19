@@ -1,0 +1,10 @@
+   {
+    "name": "SomeName",
+    "description": "SomeDesc",
+    "version": "1.0",
+    "manifest_version": 3,
+    "action":{
+        "default_popup": "index.html"
+    },
+    "permissions": ["storage", "activeTab", "scripting"]
+}
