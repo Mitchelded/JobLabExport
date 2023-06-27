@@ -1,16 +1,13 @@
 ﻿const puppeteer = require('puppeteer');
 const fs = require('fs');
-const path = require('path')
+const path = require('path');
+const readline = require('readline');
 const XlsxPopulate = require('xlsx-populate');
-
 (async () => {
-
-    const cookieFilePath = path.join(__dirname, 'cookies.json'); // Path to the cookie file
-
-    let phpSessionId = ''; // Variable to store the PHPSESSID value
+    const cookieFilePath = path.join(__dirname, 'config.json');
+    let phpSessionId = '';
 
     if (fs.existsSync(cookieFilePath)) {
-        // Read the PHPSESSID value from the file
         const cookieData = fs.readFileSync(cookieFilePath, 'utf8');
         const {
             PHPSESSID
@@ -26,254 +23,226 @@ const XlsxPopulate = require('xlsx-populate');
 
     if (!phpSessionId) {
         await page.goto('https://joblab.ru/access.php');
-
-
         const emailInput = await page.$('input[type="email"]');
         await emailInput.type('ast@5092778.ru');
-
         const passInput = await page.$('input[type="password"]');
         await passInput.type('8014802530');
-
-        // Click on the radio button with value="employer"
         await page.click('input[type="radio"][value="employer"]');
-
         await page.waitForNavigation({
             waitUntil: 'domcontentloaded'
         });
-        // Retrieve the PHPSESSID from the cookies
+
         const cookies = await page.cookies();
         const phpSessCookie = cookies.find((cookie) => cookie.name === 'PHPSESSID');
 
         if (phpSessCookie) {
             phpSessionId = phpSessCookie.value;
-
-            // Save the PHPSESSID value to the file
             const cookieData = JSON.stringify({
                 PHPSESSID: phpSessionId
             });
             fs.writeFileSync(cookieFilePath, cookieData);
         } else {
-            console.error('Failed to retrieve PHPSESSID from the login page.');
+            console.error('Не удалось получить PHPSESSID со страницы входа..');
             await browser.close();
             return;
         }
     }
+    await page.goto("https://joblab.ru/search.php?r=res&srprofecy=&kw_w2=1&srzpmax=&srregion=50&srcity=77&srcategory=&submit=1&srexpir=&srgender=");
 
-    // Set the PHPSESSID cookie
-    await page.setCookie({
-        name: 'PHPSESSID',
-        value: phpSessionId,
-        domain: 'joblab.ru',
-        path: '/',
-        expires: Math.floor(Date.now() / 1000) + 3600,
-        httpOnly: false,
-        secure: false,
-        sameSite: ''
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
     });
 
-    await page.goto('https://joblab.ru/employers/inbox.php');
-    await page.reload();
+    rl.question('Введите ключевые слова: ', async (keywords) => {
+        rl.close();
 
+        const keywordsInput = await page.$('input[name="srprofecy"]');
+        await keywordsInput.type(keywords);
 
-
-    const arrLinks = await page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll('a[href]')).map((el) => {
-            return {
-                text: el.innerText.trim(),
-                href: el.href.trim()
-            };
-        });
-
-        const filteredLinks = links.filter((link) => link.href.includes("res"));
-
-        return filteredLinks.map((link) => link.href);
+        const submitButton = await page.$('input[type="submit"][value="Найти"]');
+        await Promise.all([
+            page.waitForNavigation({
+                waitUntil: 'domcontentloaded'
+            }),
+            submitButton.click()
+        ]);
+        const currentURL = await page.url();
+        await page.waitForTimeout(200);
+        await collectLinks(currentURL);
     });
+    // Создание Excel-файла
+    const workbook = await XlsxPopulate.fromBlankAsync();
+    const sheet = workbook.sheet(0);
 
+    // Заголовки столбцов
+    const headers = ['Профессия', 'Имя', 'Место жительства', 'Зарплата', 'Опыт работы'];
+const headerRow = sheet.row(1);
+headers.forEach((header, index) => {
+  const cell = headerRow.cell(index + 1);
+  cell.value(header);
+  cell.style("bold", true);
+});
 
-    if (arrLinks.length - 1 == 0) {
-        browser.close();
-        console.log("Куки устарели")
-        fs.unlink('cookies.json', (error) => {
-            if (error) {
-                console.error('Ошибка при удалении файла:', error);
-            } else {
-                console.log('Файл куки успешно удален. Перезапустите программу');
-            }
+	const people = []; // Массив для хранения всех людей
+    const collectLinks = async (nextPageUrl = '') => {
+        await page.setCookie({
+            name: 'PHPSESSID',
+            value: phpSessionId,
+            domain: 'joblab.ru',
+            path: '/',
+            expires: Math.floor(Date.now() / 1000) + 3600,
+            httpOnly: false,
+            secure: false,
+            sameSite: ''
         });
 
-    } else {
-        console.log(`Найдено ${arrLinks.length - 1} кандидата`);
+        const targetUrl = nextPageUrl;
+        await page.goto(targetUrl);
+        await page.reload();
 
-        const workbook = await XlsxPopulate.fromBlankAsync();
-        const sheet = workbook.sheet(0);
-
-        let rowIndex = 1;
-
-        const headers = [
-            'Ссылка',
-            'Имя',
-            'Телефон',
-            'E-mail',
-            'Получено на вакансию',
-            'Отправлена вакансия',
-            'Проживание',
-            'Заработная плата',
-            'График работы',
-            'Образование',
-            'Опыт работы',
-            'Гражданство',
-            'Пол',
-            'Возраст',
-            'Период работы',
-            'Должность',
-            'Компания',
-            'Обязанности',
-            'Образование',
-            'Окончание образования',
-            'Учебное заведение',
-            'Специальность',
-            'Иностранные языки',
-            'Водительские права',
-            'Командировки',
-            'Курсы и тренинги',
-            'Навыки и умения',
-            'Обо мне'
-        ];
-
-        for (let i = 0; i < headers.length; i++) {
-            sheet.cell(rowIndex, i + 1).value(headers[i]);
-        }
-
-        rowIndex++;
-
-        for (let i = 1; i < arrLinks.length; i++) {
-            const link = arrLinks[i];
-            console.log(`Переход по ссылке ${link}`);
-            await page.goto(link);
-            console.log(`Получаем данные Кандидата_${i}`);
-
-            const candidateData = {};
-            candidateData['Ссылка'] = arrLinks[i]; // Add it to the candidateData object
-            sheet.cell(rowIndex, 1)
-                .value(arrLinks[i])
-                .hyperlink(arrLinks[i]); // Set the value and add hyperlink
-            sheet.cell(rowIndex, 1).style({
-                underline: true,
-                fontColor: "0000FF"
-            }); // Style hyperlink
-            const arrRole = await page.evaluate(() => {
-                const tbodyElement = document.querySelector(
-                    'body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody'
-                );
-                const rows = tbodyElement.querySelectorAll('tr');
-                return Array.from(rows, (row) => Array.from(row.querySelectorAll('td'), (column) => column.innerText.trim()));
+        const handleCaptcha = async () => {
+            console.log('Captcha detected. Please enter the captcha code:');
+            const rl = readline.createInterface({
+                input: process.stdin,
+                output: process.stdout
+            });
+            const captchaCode = await new Promise((resolve) => {
+                rl.question('', (answer) => {
+                    resolve(answer);
+                    rl.close();
+                });
             });
 
-            for (let j = 0; j < arrRole.length; j++) {
-                const item = arrRole[j];
+            await page.evaluate((code) => {
+                const captchaInput = document.querySelector('input[name="keystring"]');
+                captchaInput.value = code;
+            }, captchaCode);
 
-                if (item.length > 1) {
-                    const columnHeader = item[0];
-                    let columnValue = item[1];
+            await Promise.all([
+                page.waitForNavigation({
+                    waitUntil: 'domcontentloaded'
+                }),
+                page.click('input[name="submit_captcha"]')
+            ]);
+        };
 
-                    const columnIndex = headers.findIndex((header) => columnHeader.includes(header));
+        while (true) {
+            const arrLinks = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a[href]')).map((el) => {
+                    return {
+                        text: el.innerText.trim(),
+                        href: el.href.trim()
+                    };
+                });
+                const filteredLinks = links.filter((link) => link.href.includes(".html"));
+                return filteredLinks.map((link) => link.href);
+            });
 
-                    if (columnIndex !== -1) {
-                        const cell = sheet.cell(rowIndex, columnIndex + 1);
-                        if (columnHeader === 'Обязанности') {
-                            // Remove line breaks from the column value
-                            columnValue = columnValue.replace('\n', '');
-                        }
-                        if (columnHeader === 'Отправлена вакансия') {
-                            const arrJob2 = await page.evaluate(() => {
-                                let arrJob = [];
-                                for (let i = 1; i <= 15; i++) {
-                                    const selector = `body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(${i}) > td:nth-child(2)`;
-                                    const element = document.querySelector(selector);
-                                    if (element && (element.innerText.includes('просмотрена') || element.innerText.includes('приглашен') && !element.innerText.includes('Пригласить'))) {
-                                        arrJob.push(element.innerText);
-                                    }
-                                }
-                                return arrJob;
-                            });
-
-                            columnValue = arrJob2[0].replace(/Пригласить|Написать|Подумать|Отклонить/g, '').trim();
-                        }
-                        if (columnHeader === 'Получено на вакансию') {
-                            const arrJob1 = await page.evaluate(() => {
-                                let arrJob = [];
-                                for (let i = 1; i <= 15; i++) {
-                                    const selector = `body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(${i}) > td:nth-child(2)`;
-                                    const element = document.querySelector(selector);
-                                    if (element && (element.innerText.includes('Пригласить') && element.innerText.includes('Написать') && element.innerText.includes('Подумать') && element.innerText.includes('Отклонить'))) {
-                                        arrJob.push(element.innerText);
-                                    }
-                                }
-
-                                return arrJob;
-                            });
-
-                            columnValue = arrJob1[0].replace(/Пригласить|Написать|Подумать|Отклонить/g, '').trim();
-                        }
-
-                        sheet.cell(rowIndex, columnIndex + 1).value(columnValue);
-                        sheet.cell(rowIndex, columnIndex + 1).style({
-                            wrapText: 'true',
-                            horizontalAlignment: 'left',
-                            verticalAlignment: 'top'
-                        });
-                        const column = sheet.column(columnIndex + 1);
-                        const contentLength = columnValue ? columnValue.length : 0; // Ensure columnValue is defined
-                        const maxContentLength = getMaxContentLength(columnIndex);
-                        const columnWidth = Math.max(contentLength, maxContentLength) + 2;
-                        column.width(columnWidth);
-                        candidateData[columnHeader] = columnValue;
-                        const headerRange = sheet.range(`A${rowIndex-1}:AA${rowIndex-1}`);
-                        headerRange.style({
-                            border: true,
-                            horizontalAlignment: 'left',
-                            verticalAlignment: 'top'
-                        });
-                        headerRange.forEach(cell => {
-                            cell.style({
-                                fill: {
-                                    type: 'pattern',
-                                    patternType: 'solid',
-                                    fgColor: 'FFFF00'
-                                }
-                            });
-                        });
-                        cell.value(columnValue)
-                            .style({
-                                wrapText: 'true',
-                                horizontalAlignment: 'left',
-                                verticalAlignment: 'top',
-                                border: true
-                            });
+            const loginButton = await page.$('a[href="/access.php"][rel="nofollow"]');
+            if (loginButton) {
+                console.log("Куки устарели");
+                fs.unlink('config.json', (error) => {
+                    if (error) {
+                        console.error('Ошибка при удалении файла:', error);
+                    } else {
+                        console.log('Файл куки успешно удален. Перезапустите программу');
                     }
-                }
+                });
+                browser.close();
+                return;
             }
 
+            const arrLinks2 = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > p:nth-child(9) > a:nth-child(2)')).map((el) => {
+                    return {
+                        text: el.innerText.trim(),
+                        href: el.href.trim()
+                    };
+                });
+                const filteredLinks = links.filter((link) => link.href.includes("&page=") && link.href.includes("&submit=") && link.href.includes("search.php?r=res&"));
+
+                return filteredLinks.map((link) => link.href);
+            });
+
+            for (let i = 0; i < arrLinks.length; i++) {
+                const link = arrLinks[i];
+                await page.goto(link);
+
+                const captchaInput = await page.$('input[name="keystring"]');
+                if (captchaInput) {
+                    await handleCaptcha();
+                }
+                const arrName = await page.evaluate(() => {
+                    var name = document.querySelector('body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(1) > td:nth-child(2)').innerText;
+
+                    for (let i = 1; i < 21; i++) {
+                        var job = document.querySelector("body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > h1").innerText;
+                        var residenceSel = document.querySelector(`body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(${i}) > td:nth-child(2)`);
+                        if (residenceSel !== null) {
+                            var residence = residenceSel.innerText;
+                            if (residence.includes("Москва")) {
+                                var salarySel = document.querySelector(`body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(${i+1}) > td:nth-child(2)`)
+                                var salary = salarySel.innerText;
+                                var workExpSel = document.querySelector(`body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(${i+5}) > td:nth-child(2)`)
+                                var workExp = workExpSel.innerText;
+                                return {
+                                    job,
+                                    name,
+                                    residence,
+                                    salary,
+                                    workExp
+                                };
+                            }
+                        }
+						// Запись содержимого из arrName в таблицу Excel
+
+                    }
+
+                });
 
 
-            rowIndex++;
+people.push(arrName); // Добавляем человека в массив
+                console.log(`Профессия: ${arrName.job}\n Имя: ${arrName.name}\n Место жительства: ${arrName.residence}\n Зарплата: ${arrName.salary}\n Опыт работы: ${arrName.workExp}\n\n`);
 
-            console.log(`Данные Кандидата_${i} добавлены в файл Excel\n`);
+
+                // Wait for some time before navigating to the next link
+                await page.waitForTimeout(200);
+            }
+			// Запись содержимого из people в таблицу Excel
+people.forEach((person, index) => {
+  const dataRow = sheet.row(index + 2);
+  dataRow.cell(1).value(person.job);
+  dataRow.cell(2).value(person.name);
+  dataRow.cell(3).value(person.residence);
+  dataRow.cell(4).value(person.salary);
+  dataRow.cell(5).value(person.workExp);
+});
+// Применение границ к остальным данным в таблице
+const dataRange = sheet.range(`A1:E${people.length + 1}`);
+dataRange.style("border", true);
+sheet.column("A").width(80); // Установка размера столбцов
+sheet.column("B").width(32); // Установка размера столбцов
+sheet.column("C").width(35); // Установка размера столбцов
+sheet.column("D").width(19); // Установка размера столбцов
+sheet.column("E").width(17); // Установка размера столбцов
+
+            if (arrLinks2.length > 0) {
+                const nextPageUrl = arrLinks2[0];
+
+                // Update phpSessionId and collect links on the next page
+                await collectLinks(nextPageUrl);
+            } else {
+                break;
+            }
         }
-		var pathExcel = 'D:/Storage/JobLab';
-        await workbook.toFileAsync(`${pathExcel}/canditates.xlsx`);
-        console.log(`Файл Excel со всеми данными создан и сохранен в ${pathExcel}.`);
 
-        await browser.close();
-
-
-    }
-
+        browser.close();
+        // Сохранение Excel-файла
+        const excelFilePath = path.join(__dirname, 'output.xlsx');
+        await workbook.toFileAsync(excelFilePath);
+        console.log('Excel-файл успешно создан:', excelFilePath);
+    };
 
 
 })();
-
-function getMaxContentLength(arrLinks, columnIndex) {
-    let maxLength = 0;
-    return maxLength;
-}

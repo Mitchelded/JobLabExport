@@ -2,6 +2,8 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path')
 const XlsxPopulate = require('xlsx-populate');
+const ExcelJS = require('exceljs');
+
 
 (async () => {
     const cookieFilePath = path.join(__dirname, 'config.json');
@@ -57,7 +59,7 @@ const XlsxPopulate = require('xlsx-populate');
         sameSite: ''
     });
 
-    await page.goto('https://joblab.ru/employers/inbox.php');
+    await page.goto('https://joblab.ru/search.php?r=res&submit=1');
     await page.reload();
 
     const arrLinks = await page.evaluate(() => {
@@ -82,7 +84,7 @@ const XlsxPopulate = require('xlsx-populate');
             }
         });
     } else {
-		
+
         console.log(`Найдено ${arrLinks.length - 1} кандидата`);
 
         const workbook = await XlsxPopulate.fromBlankAsync();
@@ -129,13 +131,13 @@ const XlsxPopulate = require('xlsx-populate');
             console.log(`Переход по ссылке ${link}`);
             await page.goto(link);
             console.log(`Получаем данные Кандидата_${i}`);
-            const candidateData = {};
-            candidateData['Ссылка'] = arrLinks[i];
             sheet.cell(rowIndex, 1).value(arrLinks[i]).hyperlink(arrLinks[i]);
             sheet.cell(rowIndex, 1).style({
                 underline: true,
                 fontColor: "0000FF"
             });
+
+			
 
             const arrJobData = await page.evaluate(() => {
                 const selectorJob = 'body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > h1';
@@ -255,11 +257,7 @@ const XlsxPopulate = require('xlsx-populate');
                             horizontalAlignment: 'left',
                             verticalAlignment: 'top'
                         });
-						
-						
                         const column = sheet.column(columnIndex + 1);
-
-
                         switch (columnHeader) {
                             case 'Имя':
                                 column.width(22);
@@ -347,8 +345,6 @@ const XlsxPopulate = require('xlsx-populate');
 
             console.log(`Данные Кандидата_${i} добавлены в файл Excel\n`);
         }
-
-
         await workbook.find("Должность", "");
         await workbook.find("Период работы", "");
         await workbook.find("Компания", "Опыт работ");
@@ -357,6 +353,19 @@ const XlsxPopulate = require('xlsx-populate');
         await workbook.find("Окончание", "");
 
         var pathExcel = 'D:/Storage/JobLab';
+
+		// const name = readline.question("Enter vacancy ");
+		// for(let i = 0; i<arrLinks.length;i++){
+
+			// var foundOrNot = workbook.sheet("Sheet1").cell(`G${i+1}`).find(name);
+			// if(foundOrNot){
+				// console.log(`Найдено ${name}`)
+			// }
+			// else{
+				// console.log(`Не найдено ${name}`)
+			// }
+		// }
+
         await workbook.toFileAsync(`${pathExcel}/candidates.xlsx`);
         XlsxPopulate.fromFileAsync(`${pathExcel}/candidates.xlsx`)
             .then(workbook => {
@@ -390,6 +399,7 @@ const XlsxPopulate = require('xlsx-populate');
         await browser.close();
     }
 })();
+
 
 function removeDuplicateWords(sentence) {
     var words = sentence.split(", ");
