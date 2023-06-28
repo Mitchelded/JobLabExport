@@ -25,9 +25,9 @@ const ExcelJS = require('exceljs');
     if (!phpSessionId) {
         await page.goto('https://joblab.ru/access.php');
         const emailInput = await page.$('input[type="email"]');
-        await emailInput.type('ast@5092778.ru');
+        await emailInput.type('EMAIL');
         const passInput = await page.$('input[type="password"]');
-        await passInput.type('8014802530');
+        await passInput.type('PASSWORD');
         await page.click('input[type="radio"][value="employer"]');
         await page.waitForNavigation({
             waitUntil: 'domcontentloaded'

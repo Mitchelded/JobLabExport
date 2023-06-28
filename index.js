@@ -6,14 +6,22 @@ const XlsxPopulate = require('xlsx-populate');
 (async () => {
     const cookieFilePath = path.join(__dirname, 'config.json');
     let phpSessionId = '';
+	let maxPeople = 100; // Объявление переменной maxPeople
+if (fs.existsSync(cookieFilePath)) {
+  const cookieData = fs.readFileSync(cookieFilePath, 'utf8');
+  const { PHPSESSID, maxPeople: configMaxPeople } = JSON.parse(cookieData);
+  phpSessionId = PHPSESSID;
+  if (configMaxPeople) {
+    maxPeople = configMaxPeople;
+  }
+} else {
+  const configData = JSON.stringify({
+    PHPSESSID: phpSessionId,
+    maxPeople: maxPeople
+  });
+  fs.writeFileSync(cookieFilePath, configData);
+}
 
-    if (fs.existsSync(cookieFilePath)) {
-        const cookieData = fs.readFileSync(cookieFilePath, 'utf8');
-        const {
-            PHPSESSID
-        } = JSON.parse(cookieData);
-        phpSessionId = PHPSESSID;
-    }
 
     const browser = await puppeteer.launch({
         executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -24,9 +32,9 @@ const XlsxPopulate = require('xlsx-populate');
     if (!phpSessionId) {
         await page.goto('https://joblab.ru/access.php');
         const emailInput = await page.$('input[type="email"]');
-        await emailInput.type('ast@5092778.ru');
+        await emailInput.type('EMAIL');
         const passInput = await page.$('input[type="password"]');
-        await passInput.type('8014802530');
+        await passInput.type('PASSWORD');
         await page.click('input[type="radio"][value="employer"]');
         await page.waitForNavigation({
             waitUntil: 'domcontentloaded'
@@ -38,7 +46,8 @@ const XlsxPopulate = require('xlsx-populate');
         if (phpSessCookie) {
             phpSessionId = phpSessCookie.value;
             const cookieData = JSON.stringify({
-                PHPSESSID: phpSessionId
+                PHPSESSID: phpSessionId,
+				maxPeople: 100
             });
             fs.writeFileSync(cookieFilePath, cookieData);
         } else {
@@ -47,8 +56,20 @@ const XlsxPopulate = require('xlsx-populate');
             return;
         }
     }
-    await page.goto("https://joblab.ru/search.php?r=res&srprofecy=&kw_w2=1&srzpmax=&srregion=50&srcity=77&srcategory=&submit=1&srexpir=&srgender=");
-
+    await page.goto("https://joblab.ru/search.php?r=res&srprofecy=&kw_w2=1&srzpmax=&srregion=50&srcity=77&srcategory=&submit=1&srexpir=3&srgender=");
+		            const loginButton = await page.$('a[href="/access.php"]');
+            if (loginButton) {
+                console.log("Куки устарели");
+                fs.unlink('config.json', (error) => {
+                    if (error) {
+                        console.error('Ошибка при удалении файла:', error);
+                    } else {
+                        console.log('Файл куки успешно удален. Перезапустите программу');
+                    }
+                });
+                browser.close();
+                return;
+            }
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -68,7 +89,7 @@ const XlsxPopulate = require('xlsx-populate');
             submitButton.click()
         ]);
         const currentURL = await page.url();
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(500);
         await collectLinks(currentURL);
     });
     // Создание Excel-файла
@@ -76,15 +97,21 @@ const XlsxPopulate = require('xlsx-populate');
     const sheet = workbook.sheet(0);
 
     // Заголовки столбцов
-    const headers = ['Профессия', 'Имя', 'Место жительства', 'Зарплата', 'Опыт работы'];
-const headerRow = sheet.row(1);
-headers.forEach((header, index) => {
-  const cell = headerRow.cell(index + 1);
-  cell.value(header);
-  cell.style("bold", true);
-});
+    const headers = ['Профессия', 'Имя', 'Телефон', 'Почта', 'Место жительства', 'Зарплата', 'Опыт работы', 'Ссылка'];
 
-	const people = []; // Массив для хранения всех людей
+    const headerRow = sheet.row(1);
+    headers.forEach((header, index) => {
+        const cell = headerRow.cell(index + 1);
+        cell.value(header);
+        cell.style("bold", true);
+    });
+
+    const people = []; // Массив для хранения всех людей
+	
+
+
+
+    let peopleCount = 0; // Counter for the number of people processed
     const collectLinks = async (nextPageUrl = '') => {
         await page.setCookie({
             name: 'PHPSESSID',
@@ -102,7 +129,7 @@ headers.forEach((header, index) => {
         await page.reload();
 
         const handleCaptcha = async () => {
-            console.log('Captcha detected. Please enter the captcha code:');
+            console.log('Капча обнаружена. Пожалуйста, введите код проверки:');
             const rl = readline.createInterface({
                 input: process.stdin,
                 output: process.stdout
@@ -113,7 +140,7 @@ headers.forEach((header, index) => {
                     rl.close();
                 });
             });
-
+            
             await page.evaluate((code) => {
                 const captchaInput = document.querySelector('input[name="keystring"]');
                 captchaInput.value = code;
@@ -139,19 +166,7 @@ headers.forEach((header, index) => {
                 return filteredLinks.map((link) => link.href);
             });
 
-            const loginButton = await page.$('a[href="/access.php"][rel="nofollow"]');
-            if (loginButton) {
-                console.log("Куки устарели");
-                fs.unlink('config.json', (error) => {
-                    if (error) {
-                        console.error('Ошибка при удалении файла:', error);
-                    } else {
-                        console.log('Файл куки успешно удален. Перезапустите программу');
-                    }
-                });
-                browser.close();
-                return;
-            }
+
 
             const arrLinks2 = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > p:nth-child(9) > a:nth-child(2)')).map((el) => {
@@ -166,6 +181,9 @@ headers.forEach((header, index) => {
             });
 
             for (let i = 0; i < arrLinks.length; i++) {
+				    if (peopleCount >= maxPeople) {
+        break; // Прервать цикл, если достигнуто максимальное количество людей
+    }
                 const link = arrLinks[i];
                 await page.goto(link);
 
@@ -173,9 +191,30 @@ headers.forEach((header, index) => {
                 if (captchaInput) {
                     await handleCaptcha();
                 }
+                // Получение ссылки элемента и выполнение клика
+                const linkButPhone = await page.$('#p > a');
+				if(linkButPhone){
+					await linkButPhone.click();
+				}
+                await page.waitForTimeout(300);
+                
+				const linkButEmail = await page.$('#m > a');
+				if(linkButEmail){
+					 await linkButEmail.click();
+				}
+				await page.waitForTimeout(300);
                 const arrName = await page.evaluate(() => {
                     var name = document.querySelector('body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(1) > td:nth-child(2)').innerText;
-
+					
+					var phoneSel = document.querySelector('#p > a');
+					if(phoneSel!==null){
+						var phone = phoneSel.innerText;
+					}
+					var emailSel = document.querySelector('#m > a');
+					if(emailSel!==null){
+						var email = emailSel.innerText;
+					}
+					
                     for (let i = 1; i < 21; i++) {
                         var job = document.querySelector("body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > h1").innerText;
                         var residenceSel = document.querySelector(`body > table > tbody > tr:nth-child(2) > td > div > table > tbody > tr > td > table.table-to-div > tbody > tr:nth-child(${i}) > td:nth-child(2)`);
@@ -191,41 +230,57 @@ headers.forEach((header, index) => {
                                     name,
                                     residence,
                                     salary,
-                                    workExp
+                                    workExp,
+									phone,
+									email
                                 };
                             }
                         }
-						// Запись содержимого из arrName в таблицу Excel
+
 
                     }
 
                 });
 
 
-people.push(arrName); // Добавляем человека в массив
-                console.log(`Профессия: ${arrName.job}\n Имя: ${arrName.name}\n Место жительства: ${arrName.residence}\n Зарплата: ${arrName.salary}\n Опыт работы: ${arrName.workExp}\n\n`);
+        people.push({ ...arrName, link }); // Add the person to the array
+        peopleCount++; // Increment the people counter
 
-
+        console.log(`Профессия: ${arrName.job}\nИмя: ${arrName.name}\nТелефон: ${arrName.phone}\nПочта: ${arrName.email}\nМесто жительства: ${arrName.residence}\nЗарплата: ${arrName.salary}\nОпыт работы: ${arrName.workExp}\n\n`);
+		console.log(peopleCount);
                 // Wait for some time before navigating to the next link
-                await page.waitForTimeout(200);
+                await page.waitForTimeout(500);
             }
-			// Запись содержимого из people в таблицу Excel
-people.forEach((person, index) => {
-  const dataRow = sheet.row(index + 2);
-  dataRow.cell(1).value(person.job);
-  dataRow.cell(2).value(person.name);
-  dataRow.cell(3).value(person.residence);
-  dataRow.cell(4).value(person.salary);
-  dataRow.cell(5).value(person.workExp);
+            // Запись содержимого из people в таблицу Excel
+            people.forEach((person, index) => {
+    const dataRow = sheet.row(index + 2);
+    dataRow.cell(1).value(person.job);
+    dataRow.cell(2).value(person.name);
+    dataRow.cell(3).value(person.phone);
+    dataRow.cell(4).value(person.email);
+    dataRow.cell(5).value(person.residence);
+    dataRow.cell(6).value(person.salary);
+    dataRow.cell(7).value(person.workExp);
+    dataRow.cell(8).value(person.link); // Write the link to the Excel cell
+	
+	    const linkCell = dataRow.cell(8);
+    linkCell.value(person.link); // Write the link to the Excel cell
+    linkCell.style("fontColor", "0563C1"); // Set the font color to blue
+    linkCell.style("underline", true); // Underline the text
+    linkCell.hyperlink(person.link); // Add the hyperlink to the cell
 });
-// Применение границ к остальным данным в таблице
-const dataRange = sheet.range(`A1:E${people.length + 1}`);
-dataRange.style("border", true);
-sheet.column("A").width(80); // Установка размера столбцов
-sheet.column("B").width(32); // Установка размера столбцов
-sheet.column("C").width(35); // Установка размера столбцов
-sheet.column("D").width(19); // Установка размера столбцов
-sheet.column("E").width(17); // Установка размера столбцов
+
+            // Применение границ к данным в таблице
+            const dataRange = sheet.range('A1:H' + (people.length + 1)); // Update the range to include the link column
+sheet.column('A').width(80);
+sheet.column('B').width(32);
+sheet.column('C').width(32);
+sheet.column('D').width(32);
+sheet.column('E').width(35);
+sheet.column('F').width(19);
+sheet.column('G').width(17);
+sheet.column('H').width(40); // Set width for the link column
+
 
             if (arrLinks2.length > 0) {
                 const nextPageUrl = arrLinks2[0];
